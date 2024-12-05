@@ -1,0 +1,270 @@
+from flask import Flask, jsonify, request, render_template, make_response
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
+import paho.mqtt.client as mqtt
+import json
+import threading
+
+app = Flask(__name__)
+
+# Almacenamiento de datos
+data = []
+alerts = []  # Lista para guardar alertas
+
+# Configuración del umbral de temperatura y humedad
+TEMP_MAX = 29.0  # Temperatura máxima permitida
+TEMP_MIN = 16.0  # Temperatura mínima permitida
+HUMIDITY_MAX = 65.0  # Humedad máxima permitida
+HUMIDITY_MIN = 35.0  # Humedad mínima permitida
+
+# Configuración del broker MQTT
+MQTT_BROKER = '192.168.31.92'  # Dirección IP del broker MQTT
+MQTT_PORT = 1883               # Puerto del broker MQTT
+MQTT_TOPIC = 'sensores/datos'  # Tópico donde los ESP32 publican datos
+
+
+# Función para procesar mensajes del broker MQTT
+def on_message(client, userdata, msg):
+    try:
+        # Decodificar mensaje MQTT
+        payload = msg.payload.decode('utf-8')
+        payload_json = json.loads(payload)
+
+        # Extraer datos del mensaje
+        location = payload_json.get("location", "Desconocido")
+        temperature = payload_json.get("temperature", 0.0)
+        humidity = payload_json.get("humidity", 0.0)
+        date = payload_json.get("date", "")
+        time_str = payload_json.get("time", "")
+
+        # Crear registro
+        record = {
+            "location": location,
+            "temperature": temperature,
+            "humidity": humidity,
+            "date": date,
+            "time": time_str,
+        }
+
+        # Almacenar en la lista de datos
+        data.append(record)
+        if len(data) > 20:  # Limitar a los últimos 20 registros
+            data.pop(0)
+
+        # Generar alertas
+        if temperature > TEMP_MAX:
+            alerts.append({"message": f"¡Temperatura alta en {location} ({temperature}°C)!"})
+        elif temperature < TEMP_MIN:
+            alerts.append({"message": f"¡Temperatura baja en {location} ({temperature}°C)!"})
+        if humidity > HUMIDITY_MAX:
+            alerts.append({"message": f"¡Humedad alta en {location} ({humidity}%)!"})
+        elif humidity < HUMIDITY_MIN:
+            alerts.append({"message": f"¡Humedad baja en {location} ({humidity}%)!"})
+
+        # Limitar alertas a las últimas 10
+        if len(alerts) > 10:
+            alerts.pop(0)
+
+    except Exception as e:
+        print(f"Error al procesar el mensaje MQTT: {e}")
+
+
+# Configuración del cliente MQTT
+def start_mqtt():
+    mqtt_client = mqtt.Client()
+    mqtt_client.on_message = on_message
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    mqtt_client.subscribe(MQTT_TOPIC)
+    mqtt_client.loop_forever()
+
+
+# Endpoint para renderizar el HTML con datos dinámicos
+@app.route("/")
+def index():
+    for record in data:
+        record["advice"] = (
+            "Mantén en rango ideal de temperatura y humedad."
+            if TEMP_MIN <= record["temperature"] <= TEMP_MAX and HUMIDITY_MIN <= record["humidity"] <= HUMIDITY_MAX
+            else "Revisa las alertas para más detalles."
+        )
+        record["problems"] = (
+            "Sin problemas detectados."
+            if TEMP_MIN <= record["temperature"] <= TEMP_MAX and HUMIDITY_MIN <= record["humidity"] <= HUMIDITY_MAX
+            else "Consulta recomendaciones."
+        )
+    return render_template("index.html", data=data, alerts=alerts)
+
+
+# Endpoint para enviar datos en formato JSON al frontend
+@app.route("/data", methods=["GET"])
+def get_data():
+    return jsonify({"data": data, "alerts": alerts})
+
+
+# Endpoint para descargar un reporte en PDF
+@app.route("/download", methods=["GET"])
+def download_pdf():
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+
+    # Títulos del reporte
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(100, 750, "Reporte de Monitoreo de Temperatura y Humedad")
+    pdf.setFont("Helvetica", 12)
+
+    # Agregar datos al PDF
+    y_position = 700
+    for i, record in enumerate(data):
+        pdf.drawString(
+            50, y_position,
+            f"{i+1}. Ubicación: {record['location']} | Temp: {record['temperature']}°C | Humedad: {record['humidity']}%"
+        )
+        y_position -= 20
+        if y_position < 50:
+            pdf.showPage()  # Crear una nueva página si el espacio se acaba
+            y_position = 750
+
+    # Agregar alertas al PDF
+    y_position -= 40
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y_position, "Alertas:")
+    y_position -= 20
+    pdf.setFont("Helvetica", 12)
+    for i, alert in enumerate(alerts):
+        pdf.drawString(50, y_position, f"{i+1}. {alert['message']}")
+        y_position -= 20
+        if y_position < 50:
+            pdf.showPage()
+            y_position = 750
+
+    pdf.save()
+
+    buffer.seek(0)
+    response = make_response(buffer.read())
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = "inline; filename=monitoreo.pdf"
+    return response
+
+
+if __name__ == "__main__":
+    # Iniciar el cliente MQTT en un hilo separado
+    mqtt_thread = threading.Thread(target=start_mqtt)
+    mqtt_thread.daemon = True
+    mqtt_thread.start()
+
+    # Iniciar la aplicación Flask
+    app.run(debug=True, host="0.0.0.0", port=8080)
+N: {payload}")
+        return
+
+    # Extraer información
+    location = payload_json.get("location", "Desconocido")
+    temperature = payload_json.get("temperature", 0.0)
+    humidity = payload_json.get("humidity", 0.0)
+    date = payload_json.get("date", "")
+    time_str = payload_json.get("time", "")
+
+    # Generar alertas y recomendaciones
+    message = None
+    if temperature > TEMP_MAX:
+        message = f"¡Temperatura alta en {location} ({temperature}°C)! Revisa ventilación y refrigeración."
+    elif temperature < TEMP_MIN:
+        message = f"¡Temperatura baja en {location} ({temperature}°C)! Revisa calefacción o aislamiento."
+    if humidity > HUMIDITY_MAX:
+        message = f"¡Humedad alta en {location} ({humidity}%)! Revisa deshumidificación."
+    elif humidity < HUMIDITY_MIN:
+        message = f"¡Humedad baja en {location} ({humidity}%)! Revisa humidificación."
+
+    if message:
+        alerts.append({
+            "location": location,
+            "message": message,
+        })
+
+    # Guardar registro
+    record = {
+        "location": location,
+        "temperature": temperature,
+        "humidity": humidity,
+        "date": date,
+        "time": time_str,
+    }
+
+    # Agregar consejos y problemas según los rangos
+    if TEMP_MIN <= temperature <= TEMP_MAX and HUMIDITY_MIN <= humidity <= HUMIDITY_MAX:
+        record["advice"] = (
+            "- Utiliza sistemas de climatización que permitan mantener la temperatura y humedad en estos rangos.\n"
+            "- Monitorea constantemente los niveles de temperatura y humedad para prevenir variaciones."
+        )
+        record["problems"] = (
+            "- Garantiza el funcionamiento eficiente de los equipos sin riesgos de sobrecalentamiento o estrés por frío excesivo.\n"
+            "- Favorece la estabilidad operativa y prolonga la vida útil de los dispositivos."
+        )
+    elif temperature > TEMP_MAX:
+        record["advice"] = (
+            "- Asegúrate de contar con un sistema de ventilación eficiente y monitoreo de temperatura constante.\n"
+            "- Realiza mantenimientos preventivos en equipos de refrigeración.\n"
+            "- Considera implementar sistemas de alerta para detectar aumentos peligrosos de temperatura."
+        )
+        record["problems"] = (
+            "- Sobrecalentamiento: Los sistemas de refrigeración interna pueden no ser suficientes, causando daños irreparables.\n"
+            "- Desempeño Reducido: Los equipos pueden reducir su velocidad o apagarse para evitar daños.\n"
+            "- Fallos en el Hardware: Componentes sensibles, como procesadores y discos duros, son especialmente vulnerables al calor."
+        )
+    elif temperature < TEMP_MIN:
+        record["advice"] = (
+            "- Instala sistemas de calefacción o aislamiento térmico adecuados para evitar temperaturas bajas.\n"
+            "- Evita cambios bruscos de temperatura para prevenir la condensación.\n"
+            "- Mantén una supervisión constante de las condiciones ambientales."
+        )
+        record["problems"] = (
+            "- Condensación: Cambios de temperatura pueden generar humedad en los componentes, provocando cortocircuitos.\n"
+            "- Fragilidad de Materiales: Los materiales internos pueden volverse quebradizos y fallar mecánicamente.\n"
+            "- Funcionamiento Ineficiente: Los equipos fuera de su rango de temperatura pueden experimentar errores."
+        )
+    else:
+        record["advice"] = "Revisa las alertas para más detalles."
+        record["problems"] = "Consulta recomendaciones."
+
+    # Añadir registro a la lista de datos
+    data.append(record)
+
+    # Limitar a los últimos 20 registros
+    if len(data) > 20:
+        data.pop(0)
+    if len(alerts) > 10:
+        alerts.pop(0)
+
+# Función para iniciar el cliente MQTT en un hilo separado
+def mqtt_thread():
+    client = mqtt.Client()
+    client.on_message = on_message
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    client.subscribe(MQTT_TOPIC)
+    client.loop_forever()
+
+# Iniciar el hilo MQTT antes de iniciar la aplicación Flask
+mqtt_thread = threading.Thread(target=mqtt_thread)
+mqtt_thread.daemon = True
+mqtt_thread.start()
+
+@app.route("/")
+def index():
+    return render_template("index.html", data=data, alerts=alerts, TEMP_MIN=TEMP_MIN, TEMP_MAX=TEMP_MAX, HUMIDITY_MIN=HUMIDITY_MIN, HUMIDITY_MAX=HUMIDITY_MAX)
+
+@app.route("/data", methods=["GET"])
+def get_data():
+    return jsonify({"data": data, "alerts": alerts})
+
+@app.route("/download", methods=["GET"])
+def download_pdf():
+    rendered = render_template("index.html", data=data, alerts=alerts)
+    pdf = HTML(string=rendered).write_pdf()
+    response = make_response(pdf)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = "inline; filename=monitoreo.pdf"
+    return response
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=8080)

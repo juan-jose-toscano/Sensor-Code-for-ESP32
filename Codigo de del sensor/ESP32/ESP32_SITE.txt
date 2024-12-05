@@ -1,0 +1,69 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "DHT.h"
+
+// Configuración del sensor DHT
+#define DHTPIN 4 // Pin GPIO del sensor
+#define DHTTYPE DHT11 // Tipo de sensor
+DHT dht(DHTPIN, DHTTYPE);
+
+// Configuración de la red WiFi
+const char* ssid = "esp32";      // Cambia por tu red WiFi
+const char* password = "esp3212345"; // Contraseña de tu red WiFi
+
+// Dirección de la API local
+const char* serverName = "http://10.0.3.15:8080/"; // Cambia por la IP de tu computadora
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  // Conexión WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando a WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConectado a WiFi.");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+
+    // Leer datos del sensor
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
+
+    if (isnan(temperature) || isnan(humidity)) {
+      Serial.println("Error al leer el sensor DHT");
+      delay(10000);
+      return;
+    }
+
+    // Crear payload JSON
+    String payload = String("{\"location\":\"Site\",") +
+                     "\"temperature\":" + String(temperature, 1) + "," +
+                     "\"humidity\":" + String(humidity, 1) + "}";
+
+    // Enviar datos a la API
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/json");
+    int httpResponseCode = http.POST(payload);
+
+    // Mostrar resultado
+    if (httpResponseCode > 0) {
+      Serial.println("Datos enviados correctamente.");
+      Serial.println(payload);
+    } else {
+      Serial.print("Error al enviar datos: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  } else {
+    Serial.println("WiFi desconectado. Intentando reconectar...");
+    WiFi.begin(ssid, password);
+  }
+  delay(10000); // Enviar cada 10 segundos
+}

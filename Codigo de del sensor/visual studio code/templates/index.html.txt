@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Temperatura y Humedad</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px; /* Ajuste del ancho total del contenedor */
+            margin: auto;
+            padding: 20px;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #222;
+            margin-bottom: 20px;
+        }
+        .alerts {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 15px;
+            border: 1px solid #ffcccc;
+            border-left: 6px solid #ff3333;
+            background-color: #ffe6e6;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .alert.success {
+            border-left-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+        td {
+            padding: 5px;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 13px; /* Ajusta un poco el tamaño de fuente general */
+        }
+        td.consejos, td.problemas {
+            text-align: left; /* Alinea el texto a la izquierda */
+            font-size: 12px; /* Reduce el tamaño de la fuente */
+            vertical-align: top; /* Alinea el contenido al inicio de la celda */
+        }
+        td.fecha, td.hora {
+            width: 12%; /* Proporción equilibrada entre Fecha y Hora */
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        a {
+            display: block;
+            margin-top: 20px;
+            text-decoration: none;
+            background-color: #007bff;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Monitoreo de Temperatura y Humedad</h1>
+
+        <!-- Alertas dinámicas -->
+        <div class="alerts"></div>
+
+        <!-- Tabla de datos -->
+        <table>
+            <thead>
+                <tr>
+                    <th>Ubicación</th>
+                    <th>Temperatura (°C)</th>
+                    <th>Humedad (%)</th>
+                    <th class="fecha">Fecha</th>
+                    <th class="hora">Hora</th>
+                    <th>Consejos</th>
+                    <th>Problemas</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="7">Cargando datos...</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Botón para descargar reporte -->
+        <a href="/download" target="_blank">Descargar Reporte en PDF</a>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/data');
+                const result = await response.json();
+
+                const data = result.data.slice(-6); // Obtener los últimos 6 registros
+                const alerts = result.alerts;
+
+                const alertsDiv = document.querySelector('.alerts');
+                const tableBody = document.querySelector('tbody');
+
+                alertsDiv.innerHTML = '';
+                tableBody.innerHTML = '';
+
+                // Mostrar alertas
+                if (alerts.length > 0) {
+                    alerts.forEach(alert => {
+                        const alertDiv = document.createElement('div');
+                        alertDiv.classList.add('alert');
+                        alertDiv.innerHTML = `<strong>⚠️ Alerta:</strong> ${alert.message}`;
+                        alertsDiv.appendChild(alertDiv);
+                    });
+                } else {
+                    alertsDiv.innerHTML = `
+                        <div class="alert success">
+                            <strong>✔️ Todo está en orden:</strong> No se han detectado problemas.
+                        </div>
+                    `;
+                }
+
+                // Mostrar datos en la tabla
+                if (data.length > 0) {
+                    data.forEach(record => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${record.location}</td>
+                            <td>${record.temperature.toFixed(1)}°C</td>
+                            <td>${record.humidity.toFixed(1)}%</td>
+                            <td class="fecha">${record.date}</td>
+                            <td class="hora">${record.time}</td>
+                            <td class="consejos">${record.advice.replace(/\n/g, '<br>')}</td>
+                            <td class="problemas">${record.problems.replace(/\n/g, '<br>')}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    tableBody.innerHTML = `<tr><td colspan="7">No hay datos disponibles</td></tr>`;
+                }
+            } catch (error) {
+                console.error('Error al obtener datos:', error);
+                const tableBody = document.querySelector('tbody');
+                tableBody.innerHTML = `<tr><td colspan="7">Error al cargar datos. Verifica la conexión con el servidor.</td></tr>`;
+            }
+        }
+
+        setInterval(fetchData, 10000);
+        fetchData();
+    </script>
+</body>
+</html>
